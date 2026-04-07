@@ -186,10 +186,12 @@ def load_ascadv2_data(
 
 
 def generate_hw_labels(pt, key, target_byte=0):
+    # sbox_values = AES_Sbox[np.bitwise_xor(pt[:, target_byte], key[:, target_byte])]
+    # hw_values = hw_u8(sbox_values)
+    # y = to_categorical(hw_values, num_classes=9)
     sbox_values = AES_Sbox[np.bitwise_xor(pt[:, target_byte], key[:, target_byte])]
-    hw_values = hw_u8(sbox_values)
-    y = to_categorical(hw_values, num_classes=9)
-    return hw_values, y
+    y = to_categorical(sbox_values, num_classes=256)
+    return sbox_values, y
 
 def compute_class_weight_from_labels(y_labels, num_classes=9):
     counts = np.bincount(y_labels, minlength=num_classes).astype(np.float64)
@@ -230,13 +232,13 @@ def build_hw_model(input_shape):
     x = layers.Dense(256, activation="relu")(x) # 降回 256 減輕負擔
     x = layers.Dropout(0.4)(x)
     
-    outputs = layers.Dense(9, activation="softmax")(x)
+    outputs = layers.Dense(256, activation="softmax")(x)
 
-    model = models.Model(inputs=inputs, outputs=outputs, name="ASCADv2_HW_CNN_Deep")
+    model = models.Model(inputs=inputs, outputs=outputs, name="ASCADv2_ID_CNN")
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=2e-4),
         loss="categorical_crossentropy",
-        metrics=["accuracy", tf.keras.metrics.TopKCategoricalAccuracy(k=3, name="top_3_acc")]
+        metrics=["accuracy", tf.keras.metrics.TopKCategoricalAccuracy(k=5, name="top_5_acc")]
     )
     return model
 
@@ -323,8 +325,8 @@ def train_and_attack_byte_hw(
     y_val_true, Y_val = generate_hw_labels(pt_val, key_val, target_byte=target_byte)
     y_test_true, Y_test = generate_hw_labels(pt_test, key_test, target_byte=target_byte)
 
-    class_weight = compute_class_weight_from_labels(y_train_true, num_classes=9)
-    print(f"Byte {target_byte} class_weight: {class_weight}")
+    # class_weight = compute_class_weight_from_labels(y_train_true, num_classes=9)
+    # print(f"Byte {target_byte} class_weight: {class_weight}")
 
     model = build_hw_model(input_shape=(X_train.shape[1], 1))
     model_path = os.path.join(output_dir, f"best_hw_model_byte_{target_byte}.keras")
@@ -342,7 +344,7 @@ def train_and_attack_byte_hw(
         batch_size=batch_size,
         epochs=epochs,
         callbacks=cb,
-        class_weight=class_weight,
+        # class_weight=class_weight,
         verbose=1
     )
 
@@ -434,7 +436,7 @@ def main():
     # TARGET_BYTES = list(range(16))
     TARGET_BYTES = [0]
 
-    PROFILE_LIMIT = 50000
+    PROFILE_LIMIT = 10000
     ATTACK_LIMIT = 2000
     VAL_RATIO = 0.1
     SPLIT_SEED = 42
