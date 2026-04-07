@@ -434,7 +434,7 @@ def main():
     # TARGET_BYTES = list(range(16))
     TARGET_BYTES = [0]
 
-    PROFILE_LIMIT = 10000
+    PROFILE_LIMIT = 50000
     ATTACK_LIMIT = 2000
     VAL_RATIO = 0.1
     SPLIT_SEED = 42
