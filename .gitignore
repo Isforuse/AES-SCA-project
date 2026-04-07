@@ -1,0 +1,6 @@
+.venv
+requirements.txt
+hint.txt
+sca_hw_results
+pretty_logs
+ascadv2-extracted.h5
