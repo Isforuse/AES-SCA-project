@@ -5,3 +5,4 @@ sca_hw_results
 pretty_logs
 ascadv2-extracted.h5
 sca_mlp_results
+sca_cnn_mixed_results
