@@ -50,3 +50,7 @@ learning rate: 5e-4 -> 1e-4
 第四次調整 v4
 再次卡住，推測是OOM(out of memory)
 嘗試解決方法: 降低batch size，因為loss已從5.4 -> 5.0
+
+第五次調整 v5
+XLA 為了追求極致速度，有時候會把算式融合得「太過激進」。在某些筆電版 GPU 或特定的 NVIDIA 驅動程式版本上，連續執行幾萬次這種激進的融合指令後，可能會觸發記憶體越界或運算錯誤，導致 GPU 崩潰。
+解決方案（關閉 XLA 超頻）tf.config.optimizer.set_jit(False)

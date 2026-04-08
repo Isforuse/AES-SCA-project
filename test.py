@@ -22,6 +22,7 @@ import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
+tf.config.optimizer.set_jit(False)
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from tensorflow.keras import backend as K
