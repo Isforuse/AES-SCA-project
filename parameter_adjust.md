@@ -47,9 +47,6 @@ learning rate: 5e-4 -> 1e-4
 第三次調整 v3
 訓練到第10個卡住後shut down訓練、將profiling_limit調整回10000
 
-第四次調整
+第四次調整 v4
 再次卡住，推測是OOM(out of memory)
-嘗試解決方法: 開啟 Generator 的多核心加速
-# 加上下面這兩行，讓 CPU 用多核心幫忙搬運資料
-    workers=4,                  
-    use_multiprocessing=True
+嘗試解決方法: 降低batch size，因為loss已從5.4 -> 5.0

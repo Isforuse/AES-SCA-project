@@ -565,9 +565,6 @@ def _run_training(
         epochs=epochs,
         callbacks=training_callbacks,
         verbose=1,
-        # 加上下面這兩行，讓 CPU 用多核心幫忙搬運資料
-        workers=4,                  
-        use_multiprocessing=True
     )
     return history
 
@@ -720,7 +717,7 @@ def main() -> None:
         "attack_limit": 2000,
         "val_ratio": 0.1,
         # 訓練
-        "batch_size": 128, # 樣本數
+        "batch_size": 32, # 樣本數
         "epochs": 30,
         "learning_rate": 1e-4, # 訓練因子
         "dropout_rate": 0.4,
