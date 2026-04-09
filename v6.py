@@ -732,7 +732,7 @@ def main() -> None:
     # 集中管理所有超參數
     config = {
         # 資料
-        "profiling_limit": 10000,   # OOM 問題解決後可嘗試拉高至 30000
+        "profiling_limit": 30000,   # OOM 問題解決後可嘗試拉高至 30000
         "attack_limit":    2000,
         "val_ratio":       0.1,
         # 訓練（針對 4-6 GB VRAM 調整）
