@@ -70,3 +70,26 @@ Conv        |  Blocks4 層，filters 最大 256      | 3 層，最大 128Pool si
 正則化       | Dropout only                      | Dropout + L2
 batch_size  |  128                              |  64（防 OOM）
 參數量       |  ~2M                              |  ~200K
+
+第七次調整 v7
+問題及修改
+1. 標籤與攻擊邏輯的數學脫節
+    # 訓練目標：
+    vals = sbox_out ^ beta_mask
+    return vals, to_categorical(vals, num_classes=256)
+    # 攻擊推導邏輯：
+    sbox_vals = AES_SBOX[key_hypotheses ^ pt_byte]
+    log_scores += np.log(pred_probs[i, sbox_vals] + eps)
+    在攻擊階段（Attack Phase），我們是不知道遮罩 $M$ 是多少的。recover_key 函式假設模型輸出的是「乾淨的 $Sbox$ 機率」，但模型實際輸出的是「$Sbox \oplus M$ 的機率」。
+    拿著「乾淨 Sbox 的索引」去查「混淆後的機率表」，查出來的值完全是錯位的。
+解 -> 強制使用乾淨的S-Box，因為模型目前為單頭的模型，沒辦法分開學習 mask 跟 masked-key 
+
+2. GlobalAveragePooling1D 摧毀了物理時間線
+    ASCADv2 的波形有 100,000 個採樣點。經過 3 次 pool_size=2 的縮減後，時間軸還有大約 $12,500$ 個點。GlobalAveragePooling1D 的物理意義是：「把這 12,500 個不同時間點的電壓值，全部加起來除以 12,500，變成一個平均數」。AES 加密的洩漏特徵只發生在特定的幾十個奈秒內（形成幾個微小的 Peak）。你把它跟其他幾萬個冷氣雜訊、記憶體載入雜訊全部「平均」掉，特徵瞬間被稀釋到連神仙都找不到。
+解 -> 拿掉
+
+3. 模型太輕
+    模型降級到了 3 層 Conv，最大 filter 只有 128，所以結果嚴重欠缺擬合
+解 -> 多一層捲曲並且使用 Flatten()
+
+修改輸出圖表格式以及位置

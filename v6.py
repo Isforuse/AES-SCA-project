@@ -24,6 +24,7 @@ import gc
 import json
 import os
 import random
+import datetime
 
 import h5py
 import matplotlib.pyplot as plt
@@ -303,30 +304,37 @@ def make_label_with_permutation(
     return vals, to_categorical(vals, num_classes=256)
 
 
-def auto_select_label_strategy(
-    data: dict,
-    target_byte: int,
-    split: str = "train",
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    自動根據資料集實際有哪些欄位，選擇最合適的 label 策略。
+# def auto_select_label_strategy(
+#     data: dict,
+#     target_byte: int,
+#     split: str = "train",
+# ) -> tuple[np.ndarray, np.ndarray]:
+#     """
+#     自動根據資料集實際有哪些欄位，選擇最合適的 label 策略。
 
-    優先順序：C（permutation + masks） > B（masks only） > A（baseline）
-    """
+#     優先順序：C（permutation + masks） > B（masks only） > A（baseline）
+#     """
+#     pt   = data[f"pt_{split}"]
+#     key  = data[f"key_{split}"]
+#     masks = data.get(f"masks_{split}")
+#     perm  = data.get(f"perm_{split}")
+
+#     if perm is not None and masks is not None:
+#         print(f"  [{split}] 使用策略 C：permutation + masks")
+#         return make_label_with_permutation(pt, key, perm, masks, target_byte)
+#     elif masks is not None:
+#         print(f"  [{split}] 使用策略 B：masked S-Box")
+#         return make_label_masked_sbox(pt, key, masks, target_byte)
+#     else:
+#         print(f"  [{split}] 使用策略 A：直接 S-Box（baseline）")
+#         return make_label_direct_sbox(pt, key, target_byte)
+
+def auto_select_label_strategy(data: dict, target_byte: int, split: str = "train"):
+    # 強制使用策略 A (Identity Leakage)
+    # 讓 CNN 自己在內部去對抗 Mask
     pt   = data[f"pt_{split}"]
     key  = data[f"key_{split}"]
-    masks = data.get(f"masks_{split}")
-    perm  = data.get(f"perm_{split}")
-
-    if perm is not None and masks is not None:
-        print(f"  [{split}] 使用策略 C：permutation + masks")
-        return make_label_with_permutation(pt, key, perm, masks, target_byte)
-    elif masks is not None:
-        print(f"  [{split}] 使用策略 B：masked S-Box")
-        return make_label_masked_sbox(pt, key, masks, target_byte)
-    else:
-        print(f"  [{split}] 使用策略 A：直接 S-Box（baseline）")
-        return make_label_direct_sbox(pt, key, target_byte)
+    return make_label_direct_sbox(pt, key, target_byte)
 
 # =============================================================================
 # 5. 輕量 CNN（針對 4-6 GB VRAM 設計）
@@ -342,56 +350,84 @@ def _conv_block(x, filters: int, kernel_size: int, pool_size: int = 2):
     return x
 
 
+# def build_lightweight_cnn(
+#     input_shape: tuple,
+#     num_classes: int = 256,
+#     dropout_rate: float = 0.3,
+#     learning_rate: float = 1e-4,
+# ) -> models.Model:
+#     """
+#     輕量 CNN，針對 4-6 GB VRAM 的筆電 GPU 設計。
+
+#     設計原則：
+#     - 只有 3 個 Conv Block（vs 原來 4 個），大幅降低參數量
+#     - pool_size 從 4 改為 2，每層只壓縮一半，梯度更穩定
+#     - filters 上限壓在 128（原來到 256），節省 VRAM
+#     - 加入 GlobalAveragePooling（比 Flatten 少 10x 參數）
+#     - 加入 L2 正則化防止 overfitting（小資料集容易過擬合）
+
+#     參數量估計：~200K（原版約 2M，ResNet 約 5M）
+
+#     記憶體估計（batch=64, trace長度=250000點）：
+#         Warning: 如果 trace 很長（> 50000 點），建議先用前處理做 POI 選取，
+#         只取有洩漏的時間窗口，否則即使輕量模型也會 OOM。
+#     """
+#     l2 = tf.keras.regularizers.l2(1e-4)
+#     inputs = layers.Input(shape=input_shape)
+
+#     # Block 1：大 kernel 捕捉長距離特徵
+#     x = _conv_block(inputs, filters=32, kernel_size=11, pool_size=4)
+
+#     # Block 2：中 kernel 捕捉中距離特徵
+#     x = _conv_block(x, filters=64, kernel_size=7, pool_size=4)
+
+#     # Block 3：小 kernel 精細特徵萃取
+#     x = _conv_block(x, filters=128, kernel_size=3, pool_size=4)
+
+#     # GlobalAveragePooling 取代 Flatten，大幅減少參數量並改善泛化
+#     x = layers.GlobalAveragePooling1D()(x)
+
+#     # 分類頭
+#     x = layers.Dense(128, activation="swish", kernel_regularizer=l2)(x)
+#     x = layers.Dropout(dropout_rate)(x)
+#     outputs = layers.Dense(num_classes, activation="softmax")(x)
+
+#     model = models.Model(inputs=inputs, outputs=outputs, name="LightweightCNN_SCA")
+#     model.compile(
+#         optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
+#         loss="categorical_crossentropy",
+#         metrics=[
+#             "accuracy",
+#             tf.keras.metrics.TopKCategoricalAccuracy(k=5, name="top5_acc"),
+#         ],
+#     )
+#     return model
+
 def build_lightweight_cnn(
-    input_shape: tuple,
-    num_classes: int = 256,
-    dropout_rate: float = 0.3,
-    learning_rate: float = 1e-4,
-) -> models.Model:
-    """
-    輕量 CNN，針對 4-6 GB VRAM 的筆電 GPU 設計。
-
-    設計原則：
-    - 只有 3 個 Conv Block（vs 原來 4 個），大幅降低參數量
-    - pool_size 從 4 改為 2，每層只壓縮一半，梯度更穩定
-    - filters 上限壓在 128（原來到 256），節省 VRAM
-    - 加入 GlobalAveragePooling（比 Flatten 少 10x 參數）
-    - 加入 L2 正則化防止 overfitting（小資料集容易過擬合）
-
-    參數量估計：~200K（原版約 2M，ResNet 約 5M）
-
-    記憶體估計（batch=64, trace長度=250000點）：
-        Warning: 如果 trace 很長（> 50000 點），建議先用前處理做 POI 選取，
-        只取有洩漏的時間窗口，否則即使輕量模型也會 OOM。
-    """
+        input_shape: tuple, 
+        num_classes: int = 256, 
+        dropout_rate: float = 0.3, 
+        learning_rate: float = 1e-4):
     l2 = tf.keras.regularizers.l2(1e-4)
     inputs = layers.Input(shape=input_shape)
 
-    # Block 1：大 kernel 捕捉長距離特徵
+    # 加大 Pool Size，強烈壓縮時間軸，這樣後面 Flatten 就不會爆炸
     x = _conv_block(inputs, filters=32, kernel_size=11, pool_size=4)
-
-    # Block 2：中 kernel 捕捉中距離特徵
     x = _conv_block(x, filters=64, kernel_size=7, pool_size=4)
-
-    # Block 3：小 kernel 精細特徵萃取
     x = _conv_block(x, filters=128, kernel_size=3, pool_size=4)
+    x = _conv_block(x, filters=256, kernel_size=3, pool_size=4) # 多加一層，增強解碼能力
 
-    # GlobalAveragePooling 取代 Flatten，大幅減少參數量並改善泛化
-    x = layers.GlobalAveragePooling1D()(x)
-
-    # 分類頭
-    x = layers.Dense(128, activation="swish", kernel_regularizer=l2)(x)
+    x = layers.Flatten()(x) # 絕對要用 Flatten
+    
+    x = layers.Dense(256, activation="swish", kernel_regularizer=l2)(x)
     x = layers.Dropout(dropout_rate)(x)
     outputs = layers.Dense(num_classes, activation="softmax")(x)
 
-    model = models.Model(inputs=inputs, outputs=outputs, name="LightweightCNN_SCA")
+    model = models.Model(inputs=inputs, outputs=outputs)
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
         loss="categorical_crossentropy",
-        metrics=[
-            "accuracy",
-            tf.keras.metrics.TopKCategoricalAccuracy(k=5, name="top5_acc"),
-        ],
+        metrics=["accuracy", tf.keras.metrics.TopKCategoricalAccuracy(k=5, name="top5_acc")]
     )
     return model
 
@@ -678,8 +714,20 @@ def main() -> None:
     # -------------------------------------------------------------------------
 
     FILE_PATH  = r"ascadv2-extracted.h5"
-    OUTPUT_DIR = "sca_cnn_v2_results"
+    
+    # 1. 定義總資料夾
+    BASE_DIR = "sca_cnn_v2_results"
+    
+    # 2. 取得現在的時間，格式化為 年月日_時分秒 (例如: 20260410_011830)
+    current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # 3. 組合出這次專屬的子資料夾路徑
+    OUTPUT_DIR = os.path.join(BASE_DIR, f"run_{current_time}")
+    
+    # 4. 建立資料夾 (會自動連同外層的 BASE_DIR 一起建好)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
+    
+    print(f"\n本次訓練結果將獨立儲存於: {OUTPUT_DIR}\n")
 
     # 集中管理所有超參數
     config = {
