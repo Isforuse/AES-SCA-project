@@ -54,3 +54,19 @@ learning rate: 5e-4 -> 1e-4
 第五次調整 v5
 XLA 為了追求極致速度，有時候會把算式融合得「太過激進」。在某些筆電版 GPU 或特定的 NVIDIA 驅動程式版本上，連續執行幾萬次這種激進的融合指令後，可能會觸發記憶體越界或運算錯誤，導致 GPU 崩潰。
 解決方案（關閉 XLA 超頻）tf.config.optimizer.set_jit(False)
+
+第六次調整 v6
+多次訓練結果acc都在1%徘徊、推測為原版程式只讀了 plaintext 和 key，完全忽略 ASCADv2 的 Shuffling 問題。Shuffling 的意思是：每筆 trace 中，16 個 byte 的計算順序是隨機打亂的。所以 plaintext[0] 對應的波形特徵，在不同 trace 裡出現在完全不同的時間點。模型學到的只是雜訊，label 和 trace 根本對不上，這才是 acc ≈ 0.39% 的真正原因，跟模型深淺無關。
+本次改動主要增強label
+.h5 有 permutation + masks  →  策略 C（最準確）
+.h5 只有 masks              →  策略 B（次佳）
+.h5 什麼都沒有              →  策略 A（baseline，但效果差）
+新增_inspect_metadata_keys()事先查看h5欄位來讓程式自動選擇label
+差別如下
+項目         |  原版                             | 新版
+Conv        |  Blocks4 層，filters 最大 256      | 3 層，最大 128Pool size44（前兩層）
+分類前層     |  Flatten → 大量參數                | GlobalAveragePooling → 少 10x 
+參數激活函數 |  ReLU                             | Swish（對微弱洩漏訊號更平滑）
+正則化       | Dropout only                      | Dropout + L2
+batch_size  |  128                              |  64（防 OOM）
+參數量       |  ~2M                              |  ~200K
