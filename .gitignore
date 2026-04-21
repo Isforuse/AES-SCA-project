@@ -7,3 +7,7 @@ ascadv2-extracted.h5
 sca_mlp_results
 sca_cnn_mixed_results
 sca_cnn_v2_results
+ASCAD_data
+mlp-model-result
+ASCAD.h5
+cnn-model-ascadv1-result

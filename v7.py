@@ -685,7 +685,6 @@ def train_and_attack_byte(
         "sklearn_accuracy": float(sklearn_acc),
         "keras_accuracy": float(keras_acc),
         "top5_accuracy": float(keras_top5),
-        "label_strategy": "auto",
     }
 
     rank0_str = str(first_rank0_trace) if first_rank0_trace != -1 else "未達成"
